@@ -1,6 +1,6 @@
 {
-  "name": "BudgetPro",
-  "short_name": "BudgetPro",
+  "name": "Budget Pro by Jee",
+  "short_name": "Budget Pro",
   "description": "Personal Finance Manager",
   "start_url": "/budgetpro/",
   "display": "standalone",
