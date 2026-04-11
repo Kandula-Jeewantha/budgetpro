@@ -479,7 +479,7 @@ const FONT_SIZES  = [{key:'small',label:'Small',size:'13px'},{key:'medium',label
 const CARD_STYLES = [{key:'sharp',label:'Sharp',radius:'4px'},{key:'rounded',label:'Rounded',radius:'14px'},{key:'pill',label:'Pill',radius:'999px'}];
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-function App() {
+export default function App() {
   const [loading,  setLoading]  = useState(true);
   const [view,     setView]     = useState('dashboard');
 
@@ -1333,7 +1333,10 @@ function App() {
           <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-xl" style={{backgroundColor:'#000080'}}>
             <Wallet size={32} color="white"/>
           </div>
-          <h1 className={`text-3xl font-black tracking-tight ${themeDarkMode?'text-white':'text-slate-800'}`}>BudgetPro</h1>
+          <h1 className={`text-3xl font-black tracking-tight ${themeDarkMode?'text-white':'text-slate-800'}`}>
+            Budget Pro
+            <span className={`text-xs font-semibold ml-1.5 align-middle ${themeDarkMode?'text-slate-400':'text-slate-400'}`}>by Jee</span>
+          </h1>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Personal Finance Manager</p>
         </div>
 
@@ -1608,7 +1611,10 @@ function App() {
 
       <header style={{backgroundColor:'var(--bg-card)',borderColor:'var(--border)'}} className="px-6 pt-8 pb-4 border-b flex justify-between items-end shrink-0">
         <button onClick={()=>{ setView('dashboard'); setCurrentSettingsSheet(null); }} className="text-left active:opacity-70 transition-opacity">
-          <h1 className="text-2xl font-bold tracking-tight" style={{color:'var(--text-primary)'}}>BudgetPro</h1>
+          <h1 className="text-2xl font-bold tracking-tight" style={{color:'var(--text-primary)'}}>
+            Budget Pro
+            <span className="text-[10px] font-semibold ml-1 align-middle" style={{color:'var(--text-secondary)'}}>by Jee</span>
+          </h1>
           <p className="text-xs font-bold uppercase tracking-widest" style={{color:'var(--text-secondary)'}}>
             {authSession?.isDemo ? '⚡ Demo Mode' : `${MONTHS[new Date().getMonth()]} ${new Date().getFullYear()}`}
           </p>
@@ -3489,6 +3495,3 @@ function App() {
     </div>
   );
 }
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
