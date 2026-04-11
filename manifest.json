@@ -1,0 +1,21 @@
+{
+  "name": "BudgetPro",
+  "short_name": "BudgetPro",
+  "description": "Personal Finance Manager",
+  "start_url": "/budgetpro/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#000080",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/000080/ffffff?text=BP",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/000080/ffffff?text=BP",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
