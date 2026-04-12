@@ -1040,12 +1040,25 @@ function App() {
 
   const handleFingerprintAuth = async () => {
     try {
+      const uid2 = uid() || authSession?.user?.id || 'demo-user';
+      const credIdB64 = pinStore.get(`bp_fp_cred_${uid2}`);
+
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+
+      const allowCredentials = credIdB64 ? [{
+        type: 'public-key',
+        id: Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0)),
+        transports: ['internal'],
+      }] : [];
+
       const cred = await navigator.credentials.get({
         publicKey: {
-          challenge: new Uint8Array(32),
+          challenge,
           timeout: 60000,
           userVerification: 'required',
           rpId: window.location.hostname,
+          allowCredentials,
         }
       });
       if(cred) {
@@ -1070,7 +1083,11 @@ function App() {
         setPinLocked(false); setPinInput(''); setPinAttempts(0); setPinError('');
       }
     } catch(e) {
-      if(e.name !== 'NotAllowedError') setPinError('Fingerprint failed. Use PIN instead.');
+      if(e.name === 'NotAllowedError') {
+        setPinError('Fingerprint cancelled. Use PIN instead.');
+      } else {
+        setPinError('Fingerprint failed. Use PIN instead.');
+      }
     }
   };
 
@@ -1082,10 +1099,64 @@ function App() {
     setPinEnabled(false); setFingerprintEnabled(false); setPinLocked(false);
   };
 
-  const handleToggleFingerprint = (val) => {
+  const handleToggleFingerprint = async (val) => {
     const uid2 = uid() || 'demo-user';
-    pinStore.set(`bp_fp_enabled_${uid2}`, val ? 'true' : 'false');
-    setFingerprintEnabled(val);
+    if(val) {
+      // Register a passkey first before enabling
+      if(!window.PublicKeyCredential) {
+        setPinError('Biometrics not supported on this device.');
+        return;
+      }
+      try {
+        // Create a new passkey (registers fingerprint/Face ID with device)
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+        const userIdBytes = new TextEncoder().encode(uid2);
+
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp: { name: 'Budget Pro', id: window.location.hostname },
+            user: {
+              id: userIdBytes,
+              name: authSession?.user?.email || 'user',
+              displayName: 'Budget Pro User',
+            },
+            pubKeyCredParams: [
+              { type: 'public-key', alg: -7 },   // ES256
+              { type: 'public-key', alg: -257 },  // RS256
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: 'platform', // device biometric only
+              userVerification: 'required',
+              residentKey: 'required',
+            },
+            timeout: 60000,
+          }
+        });
+
+        if(credential) {
+          // Save credential ID for later verification
+          const credId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
+          pinStore.set(`bp_fp_cred_${uid2}`, credId);
+          pinStore.set(`bp_fp_enabled_${uid2}`, 'true');
+          setFingerprintEnabled(true);
+        }
+      } catch(e) {
+        if(e.name === 'NotAllowedError') {
+          setPinError('Fingerprint setup was cancelled.');
+        } else if(e.name === 'NotSupportedError') {
+          setPinError('Biometrics not supported on this device.');
+        } else {
+          setPinError('Could not set up fingerprint. Try again.');
+        }
+      }
+    } else {
+      // Disable fingerprint
+      pinStore.set(`bp_fp_enabled_${uid2}`, 'false');
+      pinStore.del(`bp_fp_cred_${uid2}`);
+      setFingerprintEnabled(false);
+    }
   };
 
   // ── Load session on mount ──────────────────────────────────────────────────
