@@ -129,9 +129,14 @@ const UserCircle = makeIcon(`<circle cx="12" cy="12" r="10"/><circle cx="12" cy=
 const Monitor = makeIcon(`<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>`);
 const Fingerprint = makeIcon(`<path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>`);
 const KeyRound = makeIcon(`<path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>`);
+const Eye = makeIcon(`<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>`);
+const EyeOff = makeIcon(`<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>`);
 const ShieldCheck = makeIcon(`<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>`);
 const Eye = makeIcon(`<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>`);
 const EyeOff = makeIcon(`<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>`);
+const Download = makeIcon(`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>`);
+const FileText = makeIcon(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`);
+const FileSpreadsheet = makeIcon(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/><path d="M8 9h8"/>`);
 const SettingsIcon = Settings;
 
 
@@ -618,6 +623,7 @@ function App() {
   const [showAuthConfirm, setShowAuthConfirm] = useState(false);
   const [showNewPw,    setShowNewPw]    = useState(false);
   const [showConfirmPw,setShowConfirmPw]= useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   // Account details sheet
   const [accDetailsNewPw,     setAccDetailsNewPw]     = useState('');
@@ -941,6 +947,119 @@ function App() {
       else setAccDetailsErr(e.message);
     }
     setAccDetailsLoading(false);
+  };
+
+  // ── Download helpers ────────────────────────────────────────────────────────
+  const downloadCSV = (data, what) => {
+    let csv = '';
+    if(what === 'transactions' || what === 'all') {
+      csv += 'TRANSACTIONS\n';
+      csv += 'Date,Type,Category,Amount (LKR),Account,Description\n';
+      transactions.forEach(t => {
+        const desc = (t.description||'').replace(/,/g,'');
+        const acct = t.type==='Transfer' ? `${t.accFrom} → ${t.accTo}` : (t.paymentMethod||'');
+        csv += `${t.date},${t.type},${t.category||''},${t.amount},${acct},"${desc}"\n`;
+      });
+      csv += '\n';
+    }
+    if(what === 'accounts' || what === 'all') {
+      csv += 'ACCOUNTS\n';
+      csv += 'Account Name,Balance (LKR)\n';
+      customAccounts.forEach(acc => {
+        const bal = dashboardStats.accountBalances[acc] ?? 0;
+        csv += `${acc},${bal.toFixed(2)}\n`;
+      });
+      csv += '\n';
+    }
+    if(what === 'goals' || what === 'all') {
+      csv += 'GOALS\n';
+      csv += 'Goal Name,Target (LKR),Saved (LKR),Status\n';
+      goals.forEach(g => {
+        const saved = (parseFloat(g.initialAmount)||0) +
+          transactions.filter(t=>t.goalId===g.id).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+        csv += `${g.name},${g.target},${saved.toFixed(2)},${g.completed?'Completed':'Active'}\n`;
+      });
+    }
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BudgetPro_${what}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPDF = (what) => {
+    const date = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+    let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+    <style>
+      body{font-family:Arial,sans-serif;margin:40px;color:#1e293b;font-size:13px;}
+      h1{color:#000080;font-size:22px;margin-bottom:4px;}
+      .subtitle{color:#64748b;font-size:11px;margin-bottom:30px;}
+      h2{color:#000080;font-size:14px;border-bottom:2px solid #000080;padding-bottom:6px;margin-top:28px;}
+      table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;}
+      th{background:#000080;color:white;padding:8px 10px;text-align:left;}
+      td{padding:7px 10px;border-bottom:1px solid #e2e8f0;}
+      tr:nth-child(even){background:#f8fafc;}
+      .summary{display:flex;gap:20px;margin:16px 0;}
+      .summary-box{background:#f1f5f9;border-radius:12px;padding:14px 20px;flex:1;}
+      .summary-box .label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;}
+      .summary-box .value{font-size:18px;font-weight:bold;color:#000080;margin-top:4px;}
+      .income{color:#059669;} .expense{color:#dc2626;} .transfer{color:#2563eb;}
+      @media print{body{margin:20px;}}
+    </style></head><body>
+    <h1>Budget Pro — Data Export</h1>
+    <div class="subtitle">Generated on ${date} &nbsp;|&nbsp; ${authSession?.user?.email||''}</div>`;
+
+    if(what==='transactions'||what==='all') {
+      const totalIn  = transactions.filter(t=>t.type==='Income').reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+      const totalOut = transactions.filter(t=>t.type==='Expense').reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+      html += `<h2>Transactions (${transactions.length} records)</h2>
+      <div class="summary">
+        <div class="summary-box"><div class="label">Total Income</div><div class="value income">LKR ${formatCurrency(totalIn)}</div></div>
+        <div class="summary-box"><div class="label">Total Expenses</div><div class="value expense">LKR ${formatCurrency(totalOut)}</div></div>
+        <div class="summary-box"><div class="label">Net</div><div class="value">LKR ${formatCurrency(totalIn-totalOut)}</div></div>
+      </div>
+      <table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Amount (LKR)</th><th>Account</th><th>Description</th></tr></thead><tbody>`;
+      transactions.forEach(t=>{
+        const acct = t.type==='Transfer'?`${t.accFrom} → ${t.accTo}`:(t.paymentMethod||'');
+        const cls  = t.type==='Income'?'income':t.type==='Expense'?'expense':'transfer';
+        html += `<tr><td>${t.date}</td><td class="${cls}">${t.type}</td><td>${t.category||'-'}</td>
+          <td class="${cls}"><strong>${formatCurrency(parseFloat(t.amount)||0)}</strong></td>
+          <td>${acct}</td><td>${t.description||'-'}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    if(what==='accounts'||what==='all') {
+      html += `<h2>Bank Accounts</h2>
+      <table><thead><tr><th>Account Name</th><th>Balance (LKR)</th></tr></thead><tbody>`;
+      customAccounts.forEach(acc=>{
+        const bal = dashboardStats.accountBalances[acc]??0;
+        html += `<tr><td>${acc}</td><td><strong>${formatCurrency(bal)}</strong></td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    if(what==='goals'||what==='all') {
+      html += `<h2>Savings Goals</h2>
+      <table><thead><tr><th>Goal</th><th>Target (LKR)</th><th>Saved (LKR)</th><th>Progress</th><th>Status</th></tr></thead><tbody>`;
+      goals.forEach(g=>{
+        const saved = (parseFloat(g.initialAmount)||0) +
+          transactions.filter(t=>t.goalId===g.id).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+        const pct = Math.min(100,Math.round((saved/(parseFloat(g.target)||1))*100));
+        html += `<tr><td>${g.name}</td><td>${formatCurrency(parseFloat(g.target)||0)}</td>
+          <td><strong>${formatCurrency(saved)}</strong></td><td>${pct}%</td>
+          <td>${g.completed?'✓ Completed':'Active'}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    html += `</body></html>`;
+    const blob = new Blob([html],{type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url,'_blank');
+    if(w) setTimeout(()=>{ w.print(); URL.revokeObjectURL(url); }, 800);
   };
 
   // ── PIN helpers ────────────────────────────────────────────────────────────
@@ -2466,6 +2585,10 @@ function App() {
                     <div className="flex items-center gap-4"><div className="bp-hub-icon w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-slate-700 group-hover:text-white transition-all"><ShieldCheck size={24}/></div><div className="text-left"><div className="font-bold text-slate-800">Security</div><div className="text-xs text-slate-400 font-medium">PIN lock &amp; fingerprint</div></div></div>
                     <ChevronRight size={20} className="text-slate-200 group-hover:text-slate-400"/>
                   </button>
+                  <button onClick={()=>setShowDownloadModal(true)} style={{borderRadius:"var(--card-r)"}} className="bp-setting-card flex items-center justify-between p-6 bg-white rounded-[32px] border border-slate-100 shadow-sm group hover:border-emerald-200 transition-all">
+                    <div className="flex items-center gap-4"><div className="bp-hub-icon w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all"><Download size={24}/></div><div className="text-left"><div className="font-bold text-slate-800">Export Data</div><div className="text-xs text-slate-400 font-medium">Download as CSV or PDF</div></div></div>
+                    <ChevronRight size={20} className="text-slate-200 group-hover:text-emerald-400"/>
+                  </button>
                   <div className="h-px bg-slate-100 mx-6 my-2"/>
                   <button onClick={()=>setShowSeedConfirm(true)} className="flex items-center justify-between p-6 bg-emerald-50/50 rounded-[32px] border border-emerald-100 shadow-sm group hover:border-emerald-200 transition-all">
                     <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-emerald-100/50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all"><Database size={24}/></div><div className="text-left"><div className="font-bold text-emerald-800">Load Sample Data</div><div className="text-xs text-emerald-600/70 font-medium">Auto-populate for testing</div></div></div>
@@ -3503,6 +3626,66 @@ function App() {
       )}
 
       {/* ── Clear Confirm ── */}
+      {/* ── Download / Export Modal ── */}
+      {showDownloadModal&&(
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl animate-in slide-in-from-bottom-8 duration-300 space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">Export Data</h2>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">Download your data as CSV or PDF</p>
+              </div>
+              <button onClick={()=>setShowDownloadModal(false)} className="p-2 text-slate-300 hover:text-slate-500"><X size={22}/></button>
+            </div>
+
+            {/* CSV Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <FileSpreadsheet size={16} className="text-emerald-600"/>
+                <span className="text-xs font-black text-slate-500 uppercase tracking-widest">CSV — Opens in Excel</span>
+              </div>
+              {[
+                {label:'All Data', sub:'Transactions, accounts & goals', what:'all'},
+                {label:'Transactions Only', sub:`${transactions.length} records`, what:'transactions'},
+                {label:'Accounts', sub:`${customAccounts.length} accounts`, what:'accounts'},
+                {label:'Goals', sub:`${goals.length} goals`, what:'goals'},
+              ].map(({label,sub,what})=>(
+                <button key={what} onClick={()=>{ downloadCSV(null,what); setShowDownloadModal(false); }}
+                  className="w-full flex items-center justify-between p-4 bg-emerald-50 hover:bg-emerald-100 rounded-2xl transition-all active:scale-95 border border-emerald-100">
+                  <div className="text-left">
+                    <div className="text-sm font-bold text-emerald-800">{label}</div>
+                    <div className="text-xs text-emerald-600">{sub}</div>
+                  </div>
+                  <Download size={16} className="text-emerald-600 shrink-0"/>
+                </button>
+              ))}
+            </div>
+
+            {/* PDF Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <FileText size={16} className="text-blue-600"/>
+                <span className="text-xs font-black text-slate-500 uppercase tracking-widest">PDF Report — Print or Save</span>
+              </div>
+              {[
+                {label:'Full Report', sub:'Transactions, accounts & goals', what:'all'},
+                {label:'Transactions Report', sub:`${transactions.length} records with summary`, what:'transactions'},
+                {label:'Goals Report', sub:`${goals.length} goals with progress`, what:'goals'},
+              ].map(({label,sub,what})=>(
+                <button key={what} onClick={()=>{ downloadPDF(what); setShowDownloadModal(false); }}
+                  className="w-full flex items-center justify-between p-4 bg-blue-50 hover:bg-blue-100 rounded-2xl transition-all active:scale-95 border border-blue-100">
+                  <div className="text-left">
+                    <div className="text-sm font-bold text-blue-800">{label}</div>
+                    <div className="text-xs text-blue-600">{sub}</div>
+                  </div>
+                  <Download size={16} className="text-blue-600 shrink-0"/>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showClearConfirm&&(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-6 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-in zoom-in-95 duration-300 text-center border-2 border-rose-50">
