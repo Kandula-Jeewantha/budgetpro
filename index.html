@@ -880,11 +880,24 @@ function App() {
 
   const handleSignOut = async () => {
     if(authSession) await sbSignOut(token()).catch(()=>{});
+    // Check if PIN is enabled — if so, show PIN screen not email screen
+    const uid2 = uid() || 'demo-user';
+    const pinOn = pinStore.get(`bp_pin_enabled_${uid2}`) === 'true';
+    const fpOn  = pinStore.get(`bp_fp_enabled_${uid2}`)  === 'true';
     await sessionStore.remove('bp_session');
-    setAuthSession(null);
     setAuthEmail(''); setAuthPassword(''); setAuthConfirm(''); setAuthError('');
     setTransactions([]); setGoals([]); setStorageAccounts([]); setStorageCategories([]);
-    // PIN and fingerprint settings are intentionally kept — they restore on next login
+    if(pinOn) {
+      // Keep authSession data so PIN screen knows who the user is
+      // but clear the real token so data cannot be accessed without PIN
+      setAuthSession(prev => prev ? { ...prev, access_token: '', refresh_token: '' } : prev);
+      setPinEnabled(true);
+      setFingerprintEnabled(fpOn);
+      setPinLocked(true);
+      setPinInput(''); setPinError(''); setPinAttempts(0);
+    } else {
+      setAuthSession(null);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -971,6 +984,30 @@ function App() {
         const uid2 = uid() || 'demo-user';
         const stored = pinStore.get(`bp_pin_${uid2}`);
         if(hashPin(next) === stored) {
+          // PIN correct — re-establish Supabase session if needed
+          const needsReauth = !authSession?.access_token;
+          if(needsReauth) {
+            // Session was cleared on sign out — need to silently refresh
+            setLoading(true);
+            try {
+              const stored2 = await sessionStore.get('bp_session');
+              if(stored2) {
+                const sess = JSON.parse(stored2);
+                const refreshed = await sbRefreshToken(sess.refresh_token);
+                if(refreshed?.access_token) {
+                  const newSess = {...sess, ...refreshed};
+                  await sessionStore.set('bp_session', JSON.stringify(newSess));
+                  setAuthSession(newSess);
+                  await loadUserData(newSess);
+                }
+              } else {
+                // No stored session — need email login
+                setPinLocked(false); setAuthSession(null);
+                setLoading(false); return;
+              }
+            } catch {}
+            setLoading(false);
+          }
           setPinLocked(false); setPinInput(''); setPinAttempts(0); setPinError('');
         } else {
           const newAttempts = pinAttempts + 1;
@@ -1002,7 +1039,27 @@ function App() {
           rpId: window.location.hostname,
         }
       });
-      if(cred) { setPinLocked(false); setPinInput(''); setPinAttempts(0); setPinError(''); }
+      if(cred) {
+        // Re-establish session if cleared on sign out
+        if(!authSession?.access_token) {
+          setLoading(true);
+          try {
+            const stored2 = await sessionStore.get('bp_session');
+            if(stored2) {
+              const sess = JSON.parse(stored2);
+              const refreshed = await sbRefreshToken(sess.refresh_token);
+              if(refreshed?.access_token) {
+                const newSess = {...sess, ...refreshed};
+                await sessionStore.set('bp_session', JSON.stringify(newSess));
+                setAuthSession(newSess);
+                await loadUserData(newSess);
+              }
+            }
+          } catch {}
+          setLoading(false);
+        }
+        setPinLocked(false); setPinInput(''); setPinAttempts(0); setPinError('');
+      }
     } catch(e) {
       if(e.name !== 'NotAllowedError') setPinError('Fingerprint failed. Use PIN instead.');
     }
@@ -1075,16 +1132,12 @@ function App() {
           if(refreshed && refreshed.access_token) {
             const newSession = {...session, ...refreshed};
             await sessionStore.set('bp_session', JSON.stringify(newSession));
-            // Check if PIN is enabled for this user
             const uid2 = newSession.user?.id || '';
             const pinOn = localStorage.getItem(`bp_pin_enabled_${uid2}`) === 'true';
             if(pinOn) {
-              // Load PIN settings and show PIN screen — skip email login
               const fpOn = localStorage.getItem(`bp_fp_enabled_${uid2}`) === 'true';
               setAuthSession(newSession);
-              setPinEnabled(true);
-              setFingerprintEnabled(fpOn);
-              setPinLocked(true);
+              setPinEnabled(true); setFingerprintEnabled(fpOn); setPinLocked(true);
               if(window.PublicKeyCredential) {
                 window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.()
                   .then(avail => setFingerprintAvail(!!avail)).catch(()=>{});
@@ -1092,9 +1145,23 @@ function App() {
               await loadUserData(newSession);
               return;
             }
-            // No PIN — load data and show app normally
             setAuthSession(newSession);
             await loadUserData(newSession);
+            return;
+          }
+          // Refresh failed — but if PIN is set, show PIN screen not email
+          const uid2 = session.user?.id || '';
+          const pinOn = localStorage.getItem(`bp_pin_enabled_${uid2}`) === 'true';
+          if(pinOn) {
+            const fpOn = localStorage.getItem(`bp_fp_enabled_${uid2}`) === 'true';
+            // Keep partial session so PIN screen shows
+            setAuthSession({...session, access_token: '', refresh_token: ''});
+            setPinEnabled(true); setFingerprintEnabled(fpOn); setPinLocked(true);
+            if(window.PublicKeyCredential) {
+              window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.()
+                .then(avail => setFingerprintAvail(!!avail)).catch(()=>{});
+            }
+            setLoading(false);
             return;
           }
         }
@@ -1583,7 +1650,9 @@ function App() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   // ─── PIN Lock Screen ──────────────────────────────────────────────────────
-  if ((pinLocked || pinSetupMode) && authSession) {
+  // Show PIN screen if locked, OR if PIN is set and no active session (post sign-out)
+  const showPinScreen = pinSetupMode || pinLocked || (!authSession && !loading && anyPinSet);
+  if (showPinScreen) {
     const isSetup   = pinSetupMode;
     const isConfirm = isSetup && pinStep === 'confirm';
     const title     = isSetup ? (isConfirm ? 'Confirm PIN' : 'Set PIN') : 'Enter PIN';
@@ -1658,7 +1727,19 @@ function App() {
   }
 
   // ─── Auth Screen ──────────────────────────────────────────────────────────
-  if (!authSession && !loading) {
+  // Only show email login if there is no stored PIN (brand new user or PIN disabled)
+  const anyPinSet = (() => {
+    try {
+      // Check if any PIN key exists in localStorage
+      for(let i=0; i<localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if(k && k.startsWith('bp_pin_enabled_') && localStorage.getItem(k) === 'true') return true;
+      }
+    } catch {}
+    return false;
+  })();
+
+  if (!authSession && !loading && !anyPinSet) {
     return (
       <div className={`flex flex-col h-screen font-sans max-w-md mx-auto shadow-2xl relative overflow-hidden items-center justify-center p-8 ${themeDarkMode?'bp-dark bg-slate-900':'bg-slate-50'}`}>
         <style>{`:root{font-size:15px;}`}</style>
