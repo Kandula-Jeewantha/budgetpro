@@ -962,7 +962,7 @@ function App() {
     if(enabled) setPinLocked(true);
   }, [authSession]);
 
-  const handlePinDigit = (digit) => {
+  const handlePinDigit = async (digit) => {
     if(pinLockoutUntil && Date.now() < pinLockoutUntil) return;
     if(pinSetupMode) {
       if(pinStep === 'enter') {
