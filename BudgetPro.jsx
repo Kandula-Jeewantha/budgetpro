@@ -14,7 +14,7 @@ import {
   Plane, GraduationCap, Trophy, Star, Heart, Car, Rocket,
   Bus, Train, Bike, ShoppingBasket, Apple, Salad, Wine,
   Shirt, Scissors, Stethoscope, Baby, Dog, Music, Camera,
-  Dumbbell, Leaf, Umbrella, LogOut, UserCircle, Monitor,
+  Dumbbell, Leaf, Umbrella, LogOut, UserCircle, Monitor, Fingerprint, KeyRound, ShieldCheck,
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -517,6 +517,19 @@ export default function App() {
 
   // Display scale
   const [displayScale, setDisplayScale] = useState(100);
+
+  // ── PIN & Fingerprint lock ──────────────────────────────────────────────────
+  const [pinEnabled,       setPinEnabled]       = useState(false);
+  const [fingerprintEnabled,setFingerprintEnabled]=useState(false);
+  const [pinLocked,        setPinLocked]        = useState(false);  // show lock screen
+  const [pinSetupMode,     setPinSetupMode]     = useState(false);  // setting new PIN
+  const [pinInput,         setPinInput]         = useState('');
+  const [pinConfirm,       setPinConfirm]       = useState('');
+  const [pinStep,          setPinStep]          = useState('enter'); // 'enter'|'confirm'
+  const [pinError,         setPinError]         = useState('');
+  const [pinAttempts,      setPinAttempts]      = useState(0);
+  const [pinLockoutUntil,  setPinLockoutUntil]  = useState(null);
+  const [fingerprintAvail, setFingerprintAvail] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (!mq) return;
@@ -778,6 +791,118 @@ export default function App() {
       else setAccDetailsErr(e.message);
     }
     setAccDetailsLoading(false);
+  };
+
+  // ── PIN helpers ────────────────────────────────────────────────────────────
+  const hashPin = (pin) => {
+    let h = 0;
+    for(let i=0;i<pin.length;i++){ h = ((h<<5)-h)+pin.charCodeAt(i); h|=0; }
+    return h.toString(36);
+  };
+
+  const pinStore = {
+    get: (k) => { try{ return localStorage.getItem(k); }catch{ return null; } },
+    set: (k,v) => { try{ localStorage.setItem(k,v); }catch{} },
+    del: (k)   => { try{ localStorage.removeItem(k); }catch{} },
+  };
+
+  // Load PIN settings on auth
+  useEffect(() => {
+    if(!authSession) return;
+    const uid2 = uid() || 'demo-user';
+    const enabled  = pinStore.get(`bp_pin_enabled_${uid2}`) === 'true';
+    const fpEnabled= pinStore.get(`bp_fp_enabled_${uid2}`)  === 'true';
+    setPinEnabled(enabled);
+    setFingerprintEnabled(fpEnabled);
+    // Check fingerprint availability
+    if(window.PublicKeyCredential) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?.()
+        .then(avail => setFingerprintAvail(!!avail)).catch(()=>{});
+    }
+    // If PIN enabled, show lock screen
+    if(enabled) setPinLocked(true);
+  }, [authSession]);
+
+  const handlePinDigit = (digit) => {
+    if(pinLockoutUntil && Date.now() < pinLockoutUntil) return;
+    if(pinSetupMode) {
+      if(pinStep === 'enter') {
+        const next = pinInput + digit;
+        setPinInput(next);
+        if(next.length === 6) { setPinStep('confirm'); setPinInput(''); setPinConfirm(next); setPinError(''); }
+      } else {
+        const next = pinInput + digit;
+        setPinInput(next);
+        if(next.length === 6) {
+          if(next === pinConfirm) {
+            // Save PIN
+            const uid2 = uid() || 'demo-user';
+            pinStore.set(`bp_pin_${uid2}`, hashPin(next));
+            pinStore.set(`bp_pin_enabled_${uid2}`, 'true');
+            setPinEnabled(true); setPinSetupMode(false);
+            setPinInput(''); setPinConfirm(''); setPinStep('enter'); setPinError('');
+          } else {
+            setPinError('PINs do not match. Try again.'); setPinInput(''); setPinStep('enter'); setPinConfirm('');
+          }
+        }
+      }
+    } else {
+      // Unlock
+      const next = pinInput + digit;
+      setPinInput(next);
+      if(next.length === 6) {
+        const uid2 = uid() || 'demo-user';
+        const stored = pinStore.get(`bp_pin_${uid2}`);
+        if(hashPin(next) === stored) {
+          setPinLocked(false); setPinInput(''); setPinAttempts(0); setPinError('');
+        } else {
+          const newAttempts = pinAttempts + 1;
+          setPinAttempts(newAttempts); setPinInput('');
+          if(newAttempts >= 5) {
+            const lockUntil = Date.now() + 30000;
+            setPinLockoutUntil(lockUntil);
+            setPinError('Too many attempts. Wait 30 seconds.');
+            setTimeout(() => { setPinLockoutUntil(null); setPinAttempts(0); setPinError(''); }, 30000);
+          } else {
+            setPinError(`Incorrect PIN. ${5-newAttempts} attempt${5-newAttempts===1?'':'s'} remaining.`);
+          }
+        }
+      }
+    }
+  };
+
+  const handlePinDelete = () => {
+    setPinInput(p => p.slice(0,-1));
+  };
+
+  const handleFingerprintAuth = async () => {
+    try {
+      const cred = await navigator.credentials.get({
+        publicKey: {
+          challenge: new Uint8Array(32),
+          timeout: 60000,
+          userVerification: 'required',
+          rpId: window.location.hostname,
+        }
+      });
+      if(cred) { setPinLocked(false); setPinInput(''); setPinAttempts(0); setPinError(''); }
+    } catch(e) {
+      if(e.name !== 'NotAllowedError') setPinError('Fingerprint failed. Use PIN instead.');
+    }
+  };
+
+  const handleDisablePin = () => {
+    const uid2 = uid() || 'demo-user';
+    pinStore.del(`bp_pin_${uid2}`);
+    pinStore.set(`bp_pin_enabled_${uid2}`, 'false');
+    pinStore.set(`bp_fp_enabled_${uid2}`, 'false');
+    setPinEnabled(false); setFingerprintEnabled(false); setPinLocked(false);
+  };
+
+  const handleToggleFingerprint = (val) => {
+    const uid2 = uid() || 'demo-user';
+    pinStore.set(`bp_fp_enabled_${uid2}`, val ? 'true' : 'false');
+    setFingerprintEnabled(val);
   };
 
   // ── Load session on mount ──────────────────────────────────────────────────
@@ -1322,6 +1447,64 @@ export default function App() {
   );
 
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  // ─── PIN Lock Screen ──────────────────────────────────────────────────────
+  if ((pinLocked || pinSetupMode) && authSession) {
+    const isSetup   = pinSetupMode;
+    const isConfirm = isSetup && pinStep === 'confirm';
+    const title     = isSetup ? (isConfirm ? 'Confirm PIN' : 'Set PIN') : 'Enter PIN';
+    const subtitle  = isSetup
+      ? (isConfirm ? 'Re-enter your 6-digit PIN' : 'Choose a 6-digit PIN to secure your app')
+      : 'Enter your PIN to continue';
+    const digits = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+    return (
+      <div className={`flex flex-col h-screen font-sans max-w-md mx-auto items-center justify-center p-8 ${themeDarkMode?'bg-slate-900':'bg-slate-50'}`}>
+        <style>{`:root{font-size:15px;}`}</style>
+        <div className="flex flex-col items-center mb-10">
+          <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-xl" style={{backgroundColor:'#000080'}}>
+            <KeyRound size={30} color="white"/>
+          </div>
+          <h2 className={`text-xl font-black tracking-tight ${themeDarkMode?'text-white':'text-slate-800'}`}>{title}</h2>
+          <p className={`text-xs font-medium mt-1 ${themeDarkMode?'text-slate-400':'text-slate-400'}`}>{subtitle}</p>
+        </div>
+        <div className="flex gap-4 mb-8">
+          {[0,1,2,3,4,5].map(i=>(
+            <div key={i} className={`w-4 h-4 rounded-full transition-all ${pinInput.length>i?'scale-110':''}`}
+              style={{backgroundColor:pinInput.length>i?'#000080':themeDarkMode?'#334155':'#e2e8f0'}}/>
+          ))}
+        </div>
+        {pinError&&<div className="mb-4 px-4 py-2 bg-rose-50 border border-rose-100 rounded-2xl"><p className="text-xs font-bold text-rose-600 text-center">{pinError}</p></div>}
+        {!isSetup&&fingerprintEnabled&&fingerprintAvail&&(
+          <button onClick={handleFingerprintAuth}
+            className={`mb-6 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all active:scale-95 ${themeDarkMode?'bg-slate-800 text-slate-300':'bg-white text-slate-600 border border-slate-200'}`}>
+            <Fingerprint size={18}/> Use Fingerprint
+          </button>
+        )}
+        <div className="grid grid-cols-3 gap-3 w-full max-w-xs">
+          {digits.map((d,i)=>(
+            d===''?<div key={i}/>:
+            d==='⌫'?(
+              <button key={i} onClick={handlePinDelete}
+                className={`h-16 rounded-2xl flex items-center justify-center text-xl font-bold transition-all active:scale-95 ${themeDarkMode?'bg-slate-800 text-slate-300':'bg-white text-slate-600 border border-slate-100 shadow-sm'}`}>⌫</button>
+            ):(
+              <button key={i} onClick={()=>handlePinDigit(d)}
+                disabled={!!(pinLockoutUntil&&Date.now()<pinLockoutUntil)}
+                className={`h-16 rounded-2xl flex items-center justify-center text-2xl font-bold transition-all active:scale-95 disabled:opacity-40 ${themeDarkMode?'bg-slate-800 text-white hover:bg-slate-700':'bg-white text-slate-800 border border-slate-100 shadow-sm hover:bg-slate-50'}`}>
+                {d}
+              </button>
+            )
+          ))}
+        </div>
+        {isSetup?(
+          <button onClick={()=>{setPinSetupMode(false);setPinInput('');setPinStep('enter');setPinError('');}}
+            className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600">Cancel</button>
+        ):(
+          <button onClick={handleSignOut}
+            className="mt-8 text-xs font-bold text-slate-400 hover:text-rose-500">Forgot PIN? Sign out</button>
+        )}
+      </div>
+    );
+  }
 
   // ─── Auth Screen ──────────────────────────────────────────────────────────
   if (!authSession && !loading) {
@@ -1931,6 +2114,10 @@ export default function App() {
                     <div className="flex items-center gap-4"><div className="bp-hub-icon w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center text-sky-600 group-hover:bg-sky-600 group-hover:text-white transition-all"><Monitor size={24}/></div><div className="text-left"><div className="font-bold text-slate-800">Display</div><div className="text-xs text-slate-400 font-medium">Adjust zoom and display scale</div></div></div>
                     <ChevronRight size={20} className="text-slate-200 group-hover:text-sky-400"/>
                   </button>
+                  <button onClick={()=>setCurrentSettingsSheet('security')} style={{borderRadius:"var(--card-r)"}} className="bp-setting-card flex items-center justify-between p-6 bg-white rounded-[32px] border border-slate-100 shadow-sm group hover:border-slate-300 transition-all">
+                    <div className="flex items-center gap-4"><div className="bp-hub-icon w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600 group-hover:bg-slate-700 group-hover:text-white transition-all"><ShieldCheck size={24}/></div><div className="text-left"><div className="font-bold text-slate-800">Security</div><div className="text-xs text-slate-400 font-medium">PIN lock &amp; fingerprint</div></div></div>
+                    <ChevronRight size={20} className="text-slate-200 group-hover:text-slate-400"/>
+                  </button>
                   <div className="h-px bg-slate-100 mx-6 my-2"/>
                   <button onClick={()=>setShowSeedConfirm(true)} className="flex items-center justify-between p-6 bg-emerald-50/50 rounded-[32px] border border-emerald-100 shadow-sm group hover:border-emerald-200 transition-all">
                     <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-emerald-100/50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all"><Database size={24}/></div><div className="text-left"><div className="font-bold text-emerald-800">Load Sample Data</div><div className="text-xs text-emerald-600/70 font-medium">Auto-populate for testing</div></div></div>
@@ -2314,6 +2501,72 @@ export default function App() {
                       Reset to Default (100%)
                     </button>
                   )}
+                </div>
+              </section>
+            )}
+
+            {currentSettingsSheet==='security' && (
+              <section className="animate-in slide-in-from-right-8 duration-500 space-y-6">
+                <div className="flex items-center gap-3">
+                  <button onClick={()=>setCurrentSettingsSheet(null)} className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-600 shadow-sm"><ChevronLeft size={20}/></button>
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight">Security</h2>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">PIN lock &amp; fingerprint</p>
+                  </div>
+                </div>
+
+                {/* PIN Lock card */}
+                <div style={{borderRadius:'var(--card-r)'}} className="bp-setting-card bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center"><KeyRound size={16} className="text-slate-600"/></div>
+                    <div className="font-bold text-slate-800 text-sm">PIN Lock</div>
+                    <div className="ml-auto">
+                      <button type="button" onClick={()=>{
+                        if(pinEnabled){ handleDisablePin(); }
+                        else { setPinInput(''); setPinStep('enter'); setPinConfirm(''); setPinError(''); setPinSetupMode(true); }
+                      }}
+                        className={`relative w-12 h-6 rounded-full transition-all ${pinEnabled?'bg-green-500':'bg-slate-200'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${pinEnabled?'translate-x-6':''}`}/>
+                      </button>
+                    </div>
+                  </div>
+                  {pinEnabled ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-2xl">
+                        <ShieldCheck size={14} className="text-green-600 shrink-0"/>
+                        <p className="text-xs font-bold text-green-700">PIN lock is active. App will lock on next open.</p>
+                      </div>
+                      <button type="button" onClick={()=>{setPinInput('');setPinStep('enter');setPinConfirm('');setPinError('');setPinSetupMode(true);}}
+                        className="w-full p-3 rounded-2xl border-2 border-slate-200 font-bold text-sm text-slate-500 hover:border-slate-300 active:scale-95 transition-all">
+                        Change PIN
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 leading-relaxed">Enable a 6-digit PIN to protect your app. You will be asked for it every time you open the app.</p>
+                  )}
+                </div>
+
+                {/* Fingerprint card */}
+                <div style={{borderRadius:'var(--card-r)'}} className={`bp-setting-card bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 space-y-4 ${!pinEnabled?'opacity-50 pointer-events-none':''}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center"><Fingerprint size={16} className="text-slate-600"/></div>
+                    <div>
+                      <div className="font-bold text-slate-800 text-sm">Fingerprint / Face ID</div>
+                      {!fingerprintAvail && <div className="text-[10px] text-slate-400">Not available on this device</div>}
+                    </div>
+                    <div className="ml-auto">
+                      <button type="button" onClick={()=>handleToggleFingerprint(!fingerprintEnabled)}
+                        disabled={!pinEnabled || !fingerprintAvail}
+                        className={`relative w-12 h-6 rounded-full transition-all ${fingerprintEnabled&&pinEnabled?'bg-green-500':'bg-slate-200'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${fingerprintEnabled&&pinEnabled?'translate-x-6':''}`}/>
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {!pinEnabled ? 'Enable PIN first to use fingerprint.' :
+                     !fingerprintAvail ? 'Your device does not support biometric authentication.' :
+                     'Use your fingerprint or Face ID instead of typing your PIN.'}
+                  </p>
                 </div>
               </section>
             )}
