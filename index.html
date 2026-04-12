@@ -697,6 +697,7 @@ function App() {
   const [expandedSections, setExpandedSections] = useState({'lib-Expense':true,'man-Expense':true});
   const [showSeedConfirm,  setShowSeedConfirm]  = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState('');
   const [showAvailableBalance, setShowAvailableBalance] = useState(false);
   const [showCompletedGoals,   setShowCompletedGoals]   = useState(false);
 
@@ -1713,10 +1714,34 @@ function App() {
   };
 
   const clearAllUserData = async () => {
+    // Clear all data from Supabase
+    await Promise.all([
+      sbSave('transactions', uid(), token(), []),
+      sbSave('goals',        uid(), token(), []),
+      sbSave('accounts',     uid(), token(), []),
+      sbSave('categories',   uid(), token(), []),
+      sbSave('settings',     uid(), token(), {}),
+    ]);
+    // Clear PIN and fingerprint from localStorage
+    const uid2 = uid() || 'demo-user';
+    pinStore.del(`bp_pin_${uid2}`);
+    pinStore.del(`bp_pin_enabled_${uid2}`);
+    pinStore.del(`bp_fp_enabled_${uid2}`);
+    pinStore.del(`bp_fp_cred_${uid2}`);
+    // Clear session
+    await sessionStore.remove('bp_session');
+    // Sign out from Supabase
+    if(authSession) await sbSignOut(token()).catch(()=>{});
+    // Reset all state
     setTransactions([]); setGoals([]); setStorageAccounts([]); setStorageCategories([]);
     applyAccounts([]); applyCategories([]);
-    await Promise.all([sbSave('transactions',uid(),token(),[]),sbSave('goals',uid(),token(),[]),sbSave('accounts',uid(),token(),[]),sbSave('categories',uid(),token(),[])]);
-    setShowClearConfirm(false); setCurrentSettingsSheet(null); setView('dashboard');
+    setPinEnabled(false); setFingerprintEnabled(false); setPinLocked(false);
+    setPinInput(''); setPinError(''); setPinAttempts(0);
+    setThemeAccent('navy'); setThemeFontSize('medium'); setThemeCardStyle('rounded'); setThemeDarkMode(false);
+    setShowClearConfirm(false);
+    setClearConfirmText('');
+    setAuthSession(null);
+    setAuthEmail(''); setAuthPassword(''); setAuthConfirm(''); setAuthError('');
   };
 
   if (loading) return (
@@ -2429,7 +2454,7 @@ function App() {
                     <PlusCircle size={20} className="text-emerald-200 group-hover:text-emerald-400"/>
                   </button>
                   <button onClick={()=>setShowClearConfirm(true)} className="flex items-center justify-between p-6 bg-rose-50/50 rounded-[32px] border border-rose-100 shadow-sm group hover:border-rose-200 transition-all">
-                    <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-rose-100/50 flex items-center justify-center text-rose-600 group-hover:bg-rose-600 group-hover:text-white transition-all"><RefreshCcw size={24}/></div><div className="text-left"><div className="font-bold text-rose-800">Reset &amp; Clear All</div><div className="text-xs text-rose-600/70 font-medium">Delete all custom data &amp; history</div></div></div>
+                    <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-rose-100/50 flex items-center justify-center text-rose-600 group-hover:bg-rose-600 group-hover:text-white transition-all"><RefreshCcw size={24}/></div><div className="text-left"><div className="font-bold text-rose-800">Reset &amp; Clear All</div><div className="text-xs text-rose-600/70 font-medium">Full reset — clears data, PIN &amp; signs out</div></div></div>
                     <X size={20} className="text-rose-200 group-hover:text-rose-400"/>
                   </button>
                 </div>
@@ -3452,12 +3477,26 @@ function App() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-6 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl animate-in zoom-in-95 duration-300 text-center border-2 border-rose-50">
             <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6"><RefreshCcw size={40}/></div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Wipe All Data?</h3>
-            <p className="text-sm text-rose-600 leading-relaxed mb-4 px-2 font-bold uppercase tracking-wider">This action cannot be undone.</p>
-            <p className="text-xs text-slate-400 leading-relaxed mb-8 px-4">All transactions, accounts, categories, and goals will be permanently deleted.</p>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Full App Reset</h3>
+            <p className="text-sm text-rose-600 leading-relaxed mb-4 px-2 font-bold uppercase tracking-wider">This cannot be undone.</p>
+            <p className="text-xs text-slate-400 leading-relaxed mb-2 px-4">Everything will be permanently deleted and reset:</p>
+            <div className="text-left bg-rose-50 rounded-2xl p-4 mb-6 space-y-1.5">
+              <p className="text-xs font-bold text-rose-700">✕ All transactions &amp; history</p>
+              <p className="text-xs font-bold text-rose-700">✕ All accounts &amp; goals</p>
+              <p className="text-xs font-bold text-rose-700">✕ All categories</p>
+              <p className="text-xs font-bold text-rose-700">✕ PIN &amp; fingerprint settings</p>
+              <p className="text-xs font-bold text-rose-700">✕ Theme preferences</p>
+              <p className="text-xs font-bold text-rose-700">✕ You will be signed out</p>
+            </div>
             <div className="flex flex-col gap-3">
-              <button onClick={clearAllUserData} className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-lg shadow-rose-100 active:scale-95 transition-transform">Reset Everything</button>
-              <button onClick={()=>setShowClearConfirm(false)} className="w-full py-4 bg-slate-100 text-slate-500 rounded-2xl font-bold active:scale-95 transition-transform">Cancel</button>
+              <button onClick={clearAllUserData}
+                className="w-full py-4 bg-rose-600 text-white rounded-2xl font-bold shadow-lg shadow-rose-100 active:scale-95 transition-transform">
+                Yes, Reset Everything
+              </button>
+              <button onClick={()=>{ setShowClearConfirm(false); setClearConfirmText(''); }}
+                className="w-full py-4 bg-slate-100 text-slate-500 rounded-2xl font-bold active:scale-95 transition-transform">
+                Cancel
+              </button>
             </div>
           </div>
         </div>
