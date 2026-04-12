@@ -635,7 +635,16 @@ function App() {
   const [displayScale, setDisplayScale] = useState(100);
 
   // ── PIN & Fingerprint lock ──────────────────────────────────────────────────
-  const [pinEnabled,       setPinEnabled]       = useState(false);
+  const [pinEnabled,       setPinEnabled]       = useState(() => {
+    // Check localStorage on init so auth screen vs PIN screen is correct immediately
+    try {
+      for(let i=0; i<localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if(k && k.startsWith('bp_pin_enabled_') && localStorage.getItem(k) === 'true') return true;
+      }
+    } catch {}
+    return false;
+  });
   const [fingerprintEnabled,setFingerprintEnabled]=useState(false);
   const [pinLocked,        setPinLocked]        = useState(false);  // show lock screen
   const [pinSetupMode,     setPinSetupMode]     = useState(false);  // setting new PIN
@@ -1651,7 +1660,7 @@ function App() {
 
   // ─── PIN Lock Screen ──────────────────────────────────────────────────────
   // Show PIN screen if locked, OR if PIN is set and no active session (post sign-out)
-  const showPinScreen = pinSetupMode || pinLocked || (!authSession && !loading && anyPinSet);
+  const showPinScreen = pinSetupMode || pinLocked || (!authSession && !loading && pinEnabled);
   if (showPinScreen) {
     const isSetup   = pinSetupMode;
     const isConfirm = isSetup && pinStep === 'confirm';
@@ -1727,19 +1736,7 @@ function App() {
   }
 
   // ─── Auth Screen ──────────────────────────────────────────────────────────
-  // Only show email login if there is no stored PIN (brand new user or PIN disabled)
-  const anyPinSet = (() => {
-    try {
-      // Check if any PIN key exists in localStorage
-      for(let i=0; i<localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if(k && k.startsWith('bp_pin_enabled_') && localStorage.getItem(k) === 'true') return true;
-      }
-    } catch {}
-    return false;
-  })();
-
-  if (!authSession && !loading && !anyPinSet) {
+  if (!authSession && !loading && !pinEnabled) {
     return (
       <div className={`flex flex-col h-screen font-sans max-w-md mx-auto shadow-2xl relative overflow-hidden items-center justify-center p-8 ${themeDarkMode?'bp-dark bg-slate-900':'bg-slate-50'}`}>
         <style>{`:root{font-size:15px;}`}</style>
