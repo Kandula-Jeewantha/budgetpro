@@ -889,23 +889,27 @@ function App() {
 
   const handleSignOut = async () => {
     if(authSession) await sbSignOut(token()).catch(()=>{});
-    // Check if PIN is enabled — if so, show PIN screen not email screen
     const uid2 = uid() || 'demo-user';
     const pinOn = pinStore.get(`bp_pin_enabled_${uid2}`) === 'true';
     const fpOn  = pinStore.get(`bp_fp_enabled_${uid2}`)  === 'true';
-    await sessionStore.remove('bp_session');
-    setAuthEmail(''); setAuthPassword(''); setAuthConfirm(''); setAuthError('');
-    setTransactions([]); setGoals([]); setStorageAccounts([]); setStorageCategories([]);
+
     if(pinOn) {
-      // Keep authSession data so PIN screen knows who the user is
-      // but clear the real token so data cannot be accessed without PIN
-      setAuthSession(prev => prev ? { ...prev, access_token: '', refresh_token: '' } : prev);
+      // Keep session in storage so PIN unlock can re-authenticate
+      // Only clear in-memory state
+      setTransactions([]); setGoals([]); setStorageAccounts([]); setStorageCategories([]);
+      setAuthEmail(''); setAuthPassword(''); setAuthConfirm(''); setAuthError('');
       setPinEnabled(true);
       setFingerprintEnabled(fpOn);
       setPinLocked(true);
       setPinInput(''); setPinError(''); setPinAttempts(0);
+      // Keep authSession with user info but clear token so app data is inaccessible
+      setAuthSession(prev => prev ? {...prev, access_token: '', refresh_token: ''} : prev);
     } else {
+      // No PIN — full sign out, clear everything
+      await sessionStore.remove('bp_session');
       setAuthSession(null);
+      setAuthEmail(''); setAuthPassword(''); setAuthConfirm(''); setAuthError('');
+      setTransactions([]); setGoals([]); setStorageAccounts([]); setStorageCategories([]);
     }
   };
 
@@ -1784,13 +1788,14 @@ function App() {
         ):(
           <div className="mt-8 flex flex-col items-center gap-3">
             {pinAttempts >= 5 && (
-              <button onClick={()=>{
+              <button onClick={async ()=>{
+                await sessionStore.remove('bp_session');
                 setPinLocked(false);
+                setPinEnabled(false);
                 setPinAttempts(0);
                 setPinError('');
                 setPinInput('');
                 setAuthSession(null);
-                sessionStore.remove('bp_session');
               }}
                 className="text-xs font-bold text-indigo-500 hover:text-indigo-700 underline underline-offset-2">
                 Login with email instead
