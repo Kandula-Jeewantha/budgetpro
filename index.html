@@ -1,14 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Budget Pro" />
-    <title>Budget Pro by Jee</title>
-    <link rel="manifest" href="manifest.json" />
+    <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" /><meta name="apple-mobile-web-app-title" content="Budget Pro" />
+    <title>Budget Pro by Jee</title><link rel="manifest" href="manifest.json" />
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -21,8 +17,8 @@
       .animate-spin { animation: spin 1s linear infinite; }
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       .animate-in { animation: fadeIn 0.2s ease forwards; }
-      .fade-in, .zoom-in-95, .slide-in-from-top-2, .slide-in-from-right-8, .slide-in-from-bottom-8, .slide-in-from-bottom-10 {}
-      .duration-200, .duration-300, .duration-500 {}
+      .fade-in,.zoom-in-95,.slide-in-from-top-2,.slide-in-from-right-8,.slide-in-from-bottom-8,.slide-in-from-bottom-10{}
+      .duration-200,.duration-300,.duration-500{}
     </style>
   </head>
   <body>
@@ -32,8 +28,7 @@ const { useState, useEffect, useMemo, useCallback } = React;
 function makeIcon(paths) {
   return function Icon({ size=24, color='currentColor', className='', style, strokeWidth=2 }) {
     return React.createElement('svg', {
-      xmlns: 'http://www.w3.org/2000/svg',
-      width: size, height: size, viewBox: '0 0 24 24',
+      xmlns: 'http://www.w3.org/2000/svg', width: size, height: size, viewBox: '0 0 24 24',
       fill: 'none', stroke: color, strokeWidth: strokeWidth,
       strokeLinecap: 'round', strokeLinejoin: 'round',
       className: className, style: style,
@@ -949,40 +944,101 @@ function App() {
 
   // ── Download helpers ────────────────────────────────────────────────────────
   const downloadCSV = (data, what) => {
-    let csv = '';
+    const date = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+    const email = authSession && authSession.user ? authSession.user.email : '';
+
+    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
+    html += '<style>';
+    html += 'body{font-family:Arial,sans-serif;margin:30px;color:#1e293b;font-size:12px;}';
+    html += 'h1{color:#000080;font-size:20px;margin-bottom:2px;}';
+    html += '.subtitle{color:#64748b;font-size:10px;margin-bottom:24px;}';
+    html += 'h2{color:#ffffff;font-size:12px;background:#000080;padding:8px 12px;margin-top:24px;margin-bottom:0;}';
+    html += '.summary-row{background:#e8edf7;font-weight:bold;}';
+    html += 'table{width:100%;border-collapse:collapse;margin-bottom:8px;}';
+    html += 'th{background:#000080;color:#ffffff;padding:7px 10px;text-align:left;font-size:11px;}';
+    html += 'td{padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;}';
+    html += 'tr:nth-child(even){background:#f8fafc;}';
+    html += '.income{color:#059669;font-weight:bold;}';
+    html += '.expense{color:#dc2626;font-weight:bold;}';
+    html += '.transfer{color:#2563eb;font-weight:bold;}';
+    html += '.amount{font-weight:bold;}';
+    html += '.completed{color:#059669;} .active{color:#f59e0b;}';
+    html += '</style></head><body>';
+    html += '<h1>Budget Pro - Data Export</h1>';
+    html += '<div class="subtitle">Generated on ' + date + ' | ' + email + '</div>';
+
     if(what === 'transactions' || what === 'all') {
-      csv += 'TRANSACTIONS\n';
-      csv += 'Date,Type,Category,Amount (LKR),Account,Description\n';
+      const totalIn  = transactions.filter(t=>t.type==='Income').reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+      const totalOut = transactions.filter(t=>t.type==='Expense').reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
+      const net      = totalIn - totalOut;
+      html += '<h2>Transactions (' + transactions.length + ' records)</h2>';
+      html += '<table><thead><tr>';
+      html += '<th>Date</th><th>Type</th><th>Category</th><th>Amount (LKR)</th><th>Account</th><th>Description</th>';
+      html += '</tr></thead><tbody>';
       transactions.forEach(t => {
-        const desc = (t.description||'').replace(/,/g,'');
-        const acct = t.type==='Transfer' ? `${t.accFrom} → ${t.accTo}` : (t.paymentMethod||'');
-        csv += `${t.date},${t.type},${t.category||''},${t.amount},${acct},"${desc}"\n`;
+        const acct = t.type === 'Transfer' ? (t.accFrom + ' to ' + t.accTo) : (t.paymentMethod||'');
+        const cls  = t.type === 'Income' ? 'income' : t.type === 'Expense' ? 'expense' : 'transfer';
+        const amt  = parseFloat(t.amount)||0;
+        html += '<tr>';
+        html += '<td>' + t.date + '</td>';
+        html += '<td class="' + cls + '">' + t.type + '</td>';
+        html += '<td>' + (t.category||'-') + '</td>';
+        html += '<td class="amount ' + cls + '">' + formatCurrency(amt) + '</td>';
+        html += '<td>' + acct + '</td>';
+        html += '<td>' + (t.description||'-') + '</td>';
+        html += '</tr>';
       });
-      csv += '\n';
+      // Summary row
+      html += '<tr class="summary-row">';
+      html += '<td colspan="3"><strong>SUMMARY</strong></td>';
+      html += '<td colspan="3">';
+      html += 'Income: <span class="income">LKR ' + formatCurrency(totalIn) + '</span> &nbsp;|&nbsp; ';
+      html += 'Expenses: <span class="expense">LKR ' + formatCurrency(totalOut) + '</span> &nbsp;|&nbsp; ';
+      html += 'Net: <strong>LKR ' + formatCurrency(net) + '</strong>';
+      html += '</td></tr>';
+      html += '</tbody></table>';
     }
+
     if(what === 'accounts' || what === 'all') {
-      csv += 'ACCOUNTS\n';
-      csv += 'Account Name,Balance (LKR)\n';
+      const totalBal = customAccounts.reduce((s,a) => s + (dashboardStats.accountBalances[a]||0), 0);
+      html += '<h2>Accounts (' + customAccounts.length + ')</h2>';
+      html += '<table><thead><tr><th>Account Name</th><th>Balance (LKR)</th></tr></thead><tbody>';
       customAccounts.forEach(acc => {
-        const bal = dashboardStats.accountBalances[acc] ?? 0;
-        csv += `${acc},${bal.toFixed(2)}\n`;
+        const bal = dashboardStats.accountBalances[acc]||0;
+        html += '<tr><td>' + acc + '</td><td class="amount">' + formatCurrency(bal) + '</td></tr>';
       });
-      csv += '\n';
+      html += '<tr class="summary-row"><td><strong>TOTAL</strong></td><td><strong>LKR ' + formatCurrency(totalBal) + '</strong></td></tr>';
+      html += '</tbody></table>';
     }
+
     if(what === 'goals' || what === 'all') {
-      csv += 'GOALS\n';
-      csv += 'Goal Name,Target (LKR),Saved (LKR),Status\n';
+      html += '<h2>Savings Goals (' + goals.length + ')</h2>';
+      html += '<table><thead><tr><th>Goal</th><th>Target (LKR)</th><th>Saved (LKR)</th><th>Remaining (LKR)</th><th>Progress</th><th>Status</th></tr></thead><tbody>';
       goals.forEach(g => {
         const saved = (parseFloat(g.initialAmount)||0) +
           transactions.filter(t=>t.goalId===g.id).reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
-        csv += `${g.name},${g.target},${saved.toFixed(2)},${g.completed?'Completed':'Active'}\n`;
+        const target = parseFloat(g.target)||0;
+        const remaining = Math.max(0, target - saved);
+        const pct = Math.min(100, Math.round((saved / (target||1)) * 100));
+        const statusCls = g.completed ? 'completed' : 'active';
+        html += '<tr>';
+        html += '<td><strong>' + g.name + '</strong></td>';
+        html += '<td class="amount">' + formatCurrency(target) + '</td>';
+        html += '<td class="amount income">' + formatCurrency(saved) + '</td>';
+        html += '<td class="amount">' + formatCurrency(remaining) + '</td>';
+        html += '<td>' + pct + '%</td>';
+        html += '<td class="' + statusCls + '">' + (g.completed ? 'Completed' : 'Active') + '</td>';
+        html += '</tr>';
       });
+      html += '</tbody></table>';
     }
-    const blob = new Blob([csv], {type:'text/csv'});
+
+    html += '</body></html>';
+    const blob = new Blob([html], {type:'application/vnd.ms-excel'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `BudgetPro_${what}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = 'BudgetPro_' + what + '_' + new Date().toISOString().split('T')[0] + '.xls';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -3827,7 +3883,7 @@ function App() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 mb-1">
                 <FileSpreadsheet size={16} className="text-emerald-600"/>
-                <span className="text-xs font-black text-slate-500 uppercase tracking-widest">CSV — Opens in Excel</span>
+                <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Excel — Opens in Excel / Sheets</span>
               </div>
               {[
                 {label:'All Data', sub:'Transactions, accounts & goals', what:'all'},
