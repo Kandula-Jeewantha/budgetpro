@@ -1121,7 +1121,7 @@ function App() {
     const result = { transactions: [], accounts: [], goals: [], errors: [] };
 
     // Detect if it's an HTML/XLS file
-    const isHTML = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+    const htmlTag = '<html'; const isHTML = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith(htmlTag);
 
     if(isHTML) {
       // Parse HTML table format (from new Excel export)
