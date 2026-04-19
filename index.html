@@ -1118,54 +1118,120 @@ function App() {
 
   // ── Import helpers ─────────────────────────────────────────────────────────
   const parseImportCSV = (text) => {
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
     const result = { transactions: [], accounts: [], goals: [], errors: [] };
-    let section = null;
-    lines.forEach((line, idx) => {
-      if(line === 'TRANSACTIONS') { section = 'transactions'; return; }
-      if(line === 'ACCOUNTS')     { section = 'accounts';     return; }
-      if(line === 'GOALS')        { section = 'goals';        return; }
-      if(line.startsWith('Date,') || line.startsWith('Account Name,') || line.startsWith('Goal Name,')) return;
-      if(!section || !line) return;
-      const cols = line.match(/(".*?"|[^,]+)(?=,|$)/g) || line.split(',');
-      const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
-      if(section === 'transactions') {
-        const [date, type, category, amount, account, description] = clean;
-        if(!date || !type || !amount) return;
-        if(!['Income','Expense','Transfer'].includes(type)) { result.errors.push('Row ' + (idx+1) + ': Unknown type'); return; }
-        const parsed = parseFloat(amount);
-        if(isNaN(parsed)) { result.errors.push('Row ' + (idx+1) + ': Invalid amount'); return; }
-        result.transactions.push({
-          id: 'imp_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-          date, type, category: category||'', amount: parsed,
-          paymentMethod: type !== 'Transfer' ? account : '',
-          accFrom: type === 'Transfer' ? (account.split(' to ')[0]||'') : '',
-          accTo:   type === 'Transfer' ? (account.split(' to ')[1]||'') : '',
-          description: description||'', goalId:'',
-        });
-      }
-      if(section === 'accounts') {
-        const [name] = clean;
-        if(name) result.accounts.push({ name });
-      }
-      if(section === 'goals') {
-        const [name, target, saved, status] = clean;
-        if(!name) return;
-        result.goals.push({
-          id: 'imp_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-          name, target: parseFloat(target)||0,
-          initialAmount: parseFloat(saved)||0,
-          completed: status === 'Completed', icon: 'Target', color: 'indigo',
-        });
-      }
-    });
+
+    // Detect if it's an HTML/XLS file
+    const isHTML = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+
+    if(isHTML) {
+      // Parse HTML table format (from new Excel export)
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/html');
+      const headings = Array.from(doc.querySelectorAll('h2'));
+      headings.forEach(h2 => {
+        const title = h2.textContent.toLowerCase();
+        const table = h2.nextElementSibling;
+        if(!table || table.tagName !== 'TABLE') return;
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+
+        if(title.includes('transaction')) {
+          rows.forEach((row, idx) => {
+            // Skip summary row
+            if(row.classList.contains('summary-row')) return;
+            const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
+            if(cells.length < 4) return;
+            const [date, type, category, amountRaw, account, description] = cells;
+            if(!date || !type || !amountRaw) return;
+            if(!['Income','Expense','Transfer'].includes(type)) { result.errors.push('Row '+(idx+1)+': Unknown type'); return; }
+            // Remove commas from formatted number
+            const parsed = parseFloat(amountRaw.replace(/,/g,''));
+            if(isNaN(parsed)) { result.errors.push('Row '+(idx+1)+': Invalid amount'); return; }
+            result.transactions.push({
+              id: 'imp_'+Date.now()+'_'+Math.random().toString(36).slice(2),
+              date, type, category: category||'', amount: parsed,
+              paymentMethod: type !== 'Transfer' ? (account||'') : '',
+              accFrom: type === 'Transfer' ? ((account||'').split(' to ')[0]||'') : '',
+              accTo:   type === 'Transfer' ? ((account||'').split(' to ')[1]||'') : '',
+              description: description||'', goalId:'',
+            });
+          });
+        }
+
+        if(title.includes('account')) {
+          rows.forEach(row => {
+            if(row.classList.contains('summary-row')) return;
+            const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
+            if(cells[0]) result.accounts.push({ name: cells[0] });
+          });
+        }
+
+        if(title.includes('goal')) {
+          rows.forEach((row, idx) => {
+            if(row.classList.contains('summary-row')) return;
+            const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
+            if(cells.length < 4) return;
+            const [name, target, saved, , , status] = cells;
+            if(!name) return;
+            result.goals.push({
+              id: 'imp_'+Date.now()+'_'+Math.random().toString(36).slice(2),
+              name,
+              target: parseFloat((target||'0').replace(/,/g,''))||0,
+              initialAmount: parseFloat((saved||'0').replace(/,/g,''))||0,
+              completed: (status||'').toLowerCase() === 'completed',
+              icon: 'Target', color: 'indigo',
+            });
+          });
+        }
+      });
+    } else {
+      // Parse plain CSV format (legacy)
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      let section = null;
+      lines.forEach((line, idx) => {
+        if(line === 'TRANSACTIONS') { section = 'transactions'; return; }
+        if(line === 'ACCOUNTS')     { section = 'accounts';     return; }
+        if(line === 'GOALS')        { section = 'goals';        return; }
+        if(line.startsWith('Date,') || line.startsWith('Account Name,') || line.startsWith('Goal Name,')) return;
+        if(!section || !line) return;
+        const cols = line.match(/(".*?"|[^,]+)(?=,|$)/g) || line.split(',');
+        const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
+        if(section === 'transactions') {
+          const [date, type, category, amount, account, description] = clean;
+          if(!date || !type || !amount) return;
+          if(!['Income','Expense','Transfer'].includes(type)) { result.errors.push('Row '+(idx+1)+': Unknown type'); return; }
+          const parsed = parseFloat(amount);
+          if(isNaN(parsed)) { result.errors.push('Row '+(idx+1)+': Invalid amount'); return; }
+          result.transactions.push({
+            id: 'imp_'+Date.now()+'_'+Math.random().toString(36).slice(2),
+            date, type, category: category||'', amount: parsed,
+            paymentMethod: type !== 'Transfer' ? account : '',
+            accFrom: type === 'Transfer' ? ((account||'').split(' to ')[0]||'') : '',
+            accTo:   type === 'Transfer' ? ((account||'').split(' to ')[1]||'') : '',
+            description: description||'', goalId:'',
+          });
+        }
+        if(section === 'accounts') {
+          const [name] = clean;
+          if(name) result.accounts.push({ name });
+        }
+        if(section === 'goals') {
+          const [name, target, saved, status] = clean;
+          if(!name) return;
+          result.goals.push({
+            id: 'imp_'+Date.now()+'_'+Math.random().toString(36).slice(2),
+            name, target: parseFloat(target)||0, initialAmount: parseFloat(saved)||0,
+            completed: status === 'Completed', icon: 'Target', color: 'indigo',
+          });
+        }
+      });
+    }
     return result;
   };
 
   const handleImportFile = (e) => {
     const file = e.target.files[0];
     if(!file) return;
-    if(!file.name.endsWith('.csv')) { setImportError('Please select a CSV file.'); return; }
+    if(!file.name.endsWith('.csv') && !file.name.endsWith('.xls')) { setImportError('Please select a CSV or XLS file exported from Budget Pro.'); return; }
     setImportError('');
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -1187,29 +1253,53 @@ function App() {
     setImportLoading(true);
     try {
       const uid2 = uid(); const tok = token();
+
+      // Convert imported account names to proper account objects
+      const toAccObj = (name) => ({
+        id: name, initialBalance: 0, description: '', icon: 'Wallet', color: 'indigo-600', hidden: false,
+      });
+
       if(mode === 'replace') {
         const newTxns  = importData.transactions;
         const newGoals = importData.goals;
-        const newAccs  = importData.accounts.map(a => a.name);
+        const newAccObjs = importData.accounts.map(a => toAccObj(a.name));
+
+        await sbSave('transactions', uid2, tok, newTxns);
+        await sbSave('goals',        uid2, tok, newGoals);
+        await sbSave('accounts',     uid2, tok, newAccObjs);
+
         setTransactions([...newTxns].sort((a,b) => new Date(b.date) - new Date(a.date)));
         setGoals(newGoals);
-        setStorageAccounts(newAccs); applyAccounts(newAccs);
-        await sbSave('transactions', uid2, tok, newTxns);
-        await sbSave('goals', uid2, tok, newGoals);
-        await sbSave('accounts', uid2, tok, newAccs);
+        setStorageAccounts(newAccObjs);
+        applyAccounts(newAccObjs);
+
       } else {
+        // Merge — combine with existing
         const merged      = [...transactions, ...importData.transactions];
         const mergedGoals = [...goals, ...importData.goals];
-        const newAccNames = importData.accounts.map(a => a.name).filter(n => !customAccounts.includes(n));
-        const mergedAccs  = [...customAccounts, ...newAccNames];
+
+        // Merge accounts — only add ones that don't already exist
+        const existingIds = storageAccounts.map(a => a.id);
+        const newAccObjs  = importData.accounts
+          .filter(a => !existingIds.includes(a.name))
+          .map(a => toAccObj(a.name));
+        const mergedAccObjs = [...storageAccounts, ...newAccObjs];
+
+        await sbSave('transactions', uid2, tok, merged);
+        await sbSave('goals',        uid2, tok, mergedGoals);
+        await sbSave('accounts',     uid2, tok, mergedAccObjs);
+
         setTransactions([...merged].sort((a,b) => new Date(b.date) - new Date(a.date)));
         setGoals(mergedGoals);
-        setStorageAccounts(mergedAccs); applyAccounts(mergedAccs);
-        await sbSave('transactions', uid2, tok, merged);
-        await sbSave('goals', uid2, tok, mergedGoals);
-        await sbSave('accounts', uid2, tok, mergedAccs);
+        setStorageAccounts(mergedAccObjs);
+        applyAccounts(mergedAccObjs);
       }
-      setImportStep('upload'); setImportData(null); setShowImportModal(false);
+
+      setImportStep('upload');
+      setImportData(null);
+      setImportError('');
+      setShowImportModal(false);
+
     } catch(err) {
       setImportError('Import failed. Please try again.');
     }
@@ -3788,7 +3878,7 @@ function App() {
               <div>
                 <h2 className="text-xl font-bold tracking-tight">Import CSV</h2>
                 <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  {importStep==='upload' ? 'Select a Budget Pro CSV file' : importStep==='preview' ? 'Review data to import' : 'Choose import mode'}
+                  {importStep==='upload' ? 'Select a Budget Pro CSV or Excel file' : importStep==='preview' ? 'Review data to import' : 'Choose import mode'}
                 </p>
               </div>
               <button onClick={()=>{ setShowImportModal(false); setImportStep('upload'); setImportData(null); setImportError(''); }}
@@ -3802,7 +3892,7 @@ function App() {
                   <Download size={28} className="text-indigo-400 rotate-180 mb-2"/>
                   <span className="text-sm font-bold text-indigo-600">Tap to select CSV file</span>
                   <span className="text-xs text-indigo-400 mt-1">Exported from Budget Pro</span>
-                  <input type="file" accept=".csv" className="hidden" onChange={handleImportFile}/>
+                <input type="file" accept=".csv,.xls" className="hidden" onChange={handleImportFile}/>
                 </label>
                 {importError&&(
                   <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-100 rounded-2xl">
