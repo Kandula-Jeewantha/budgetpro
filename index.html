@@ -2086,6 +2086,7 @@ function App() {
   };
 
   const clearAllUserData = async () => {
+    const uid2 = uid() || 'demo-user';
     // Clear all data from Supabase
     await Promise.all([
       sbSave('transactions', uid(), token(), []),
@@ -2095,7 +2096,6 @@ function App() {
       sbSave('settings',     uid(), token(), {}),
     ]);
     // Clear PIN and fingerprint from localStorage
-    const uid2 = uid() || 'demo-user';
     pinStore.del(`bp_pin_${uid2}`);
     pinStore.del(`bp_pin_enabled_${uid2}`);
     pinStore.del(`bp_fp_enabled_${uid2}`);
@@ -2104,16 +2104,33 @@ function App() {
     await sessionStore.remove('bp_session');
     // Sign out from Supabase
     if(authSession) await sbSignOut(token()).catch(()=>{});
-    // Reset all state
-    setTransactions([]); setGoals([]); setStorageAccounts([]); setStorageCategories([]);
-    applyAccounts([]); applyCategories([]);
-    setPinEnabled(false); setFingerprintEnabled(false); setPinLocked(false);
-    setPinInput(''); setPinError(''); setPinAttempts(0);
-    setThemeAccent('navy'); setThemeFontSize('medium'); setThemeCardStyle('rounded'); setThemeDarkMode(false);
+    // Reset ALL UI state first so lists are visibly cleared
+    setTransactions([]);
+    setGoals([]);
+    setStorageAccounts([]);
+    setStorageCategories([]);
+    applyAccounts([]);
+    applyCategories([]);
+    setPinEnabled(false);
+    setFingerprintEnabled(false);
+    setPinLocked(false);
+    setPinInput('');
+    setPinError('');
+    setPinAttempts(0);
+    setThemeAccent('navy');
+    setThemeFontSize('medium');
+    setThemeCardStyle('rounded');
+    setThemeDarkMode(false);
+    setView('dashboard');
+    setCurrentSettingsSheet(null);
     setShowClearConfirm(false);
     setClearConfirmText('');
+    // Finally sign out — this takes user to login screen
     setAuthSession(null);
-    setAuthEmail(''); setAuthPassword(''); setAuthConfirm(''); setAuthError('');
+    setAuthEmail('');
+    setAuthPassword('');
+    setAuthConfirm('');
+    setAuthError('');
   };
 
   if (loading) return (
