@@ -742,6 +742,7 @@ function App() {
   const [goalFormData, setGoalFormData] = useState({name:'',target:'',initialAmount:'0',icon:'PiggyBank',color:'indigo-600'});
 
   const [accEditName,        setAccEditName]        = useState('');
+  const [accEditExclude,     setAccEditExclude]     = useState(false);
   const [accEditDescription, setAccEditDescription] = useState('');
   const [accEditBalance,     setAccEditBalance]     = useState('');
   const [accEditIcon,        setAccEditIcon]        = useState('Wallet');
@@ -772,7 +773,7 @@ function App() {
     const hidden  = accList.filter(a=>a.hidden).map(a=>a.id);
     const active  = accList.filter(a=>!a.hidden);
     const obj = {};
-    active.forEach(a => { obj[a.id]={initialBalance:a.initialBalance||0, description:a.description||'', currentBalance:a.currentBalance||0, icon:a.icon||'Wallet', color:a.color||'indigo-600'}; });
+    active.forEach(a => { obj[a.id]={initialBalance:a.initialBalance||0, description:a.description||'', currentBalance:a.currentBalance||0, icon:a.icon||'Wallet', color:a.color||'indigo-600', excludeFromAvailable:a.excludeFromAvailable||false}; });
     setAccountsData(obj);
     setCustomAccounts(Array.from(new Set([...DEFAULT_ACCOUNTS,...active.map(a=>a.id)])).filter(n=>!hidden.includes(n)));
   }, []);
@@ -1796,13 +1797,18 @@ function App() {
 
     res.totalBalance=Object.values(res.accountBalances).reduce((a,b)=>a+b,0);
 
+    // Available balance excludes accounts marked as excludeFromAvailable (e.g. credit cards)
+    const availableAccountsTotal = customAccounts
+      .filter(a => !accountsData[a]?.excludeFromAvailable)
+      .reduce((s,a) => s + (res.accountBalances[a]||0), 0);
+
     // Goal committed = all saving transactions linked to a goal that still exists (active or completed, not deleted)
     const activeGoalIds = new Set(goals.map(g=>g.id));
     res.goalCommitted = transactions
       .filter(t=>(t.type==='Transfer'&&t.purpose==='Saving')&&t.goalId&&activeGoalIds.has(t.goalId))
       .reduce((s,t)=>s+(parseFloat(t.amount)||0),0);
 
-    res.availableBalance = res.totalBalance - res.goalCommitted;
+    res.availableBalance = availableAccountsTotal - res.goalCommitted;
     res.expenseByCategory=Object.entries(expGroups).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
     res.incomeByCategory=Object.entries(incGroups).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
     res.trendData=buckets;
@@ -1945,10 +1951,10 @@ function App() {
 
   const handleAddNewAccount = async () => {
     if(!accEditName.trim()) return;
-    const newAcc={id:accEditName.trim(), initialBalance:parseFloat(accEditBalance)||0, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false};
+    const newAcc={id:accEditName.trim(), initialBalance:parseFloat(accEditBalance)||0, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false, excludeFromAvailable:accEditExclude};
     const newAccs=[...storageAccounts.filter(a=>a.id!==newAcc.id),newAcc];
     setStorageAccounts(newAccs); applyAccounts(newAccs); await sbSave('accounts',uid(),token(),newAccs);
-    setShowAddAccModal(false); setAccEditName(''); setAccEditBalance(''); setAccEditDescription(''); setAccEditIcon('Wallet'); setAccEditColor('indigo-600');
+    setShowAddAccModal(false); setAccEditName(''); setAccEditBalance(''); setAccEditDescription(''); setAccEditIcon('Wallet'); setAccEditColor('indigo-600'); setAccEditExclude(false);
   };
 
   const saveAccountInfo = async () => {
@@ -1970,13 +1976,13 @@ function App() {
       // Rename — hide old, create new
       newAccs = newAccs.map(a => a.id === showAccModal ? {...a, hidden:true} : a);
       const exists = newAccs.find(a => a.id === newName);
-      if (exists) newAccs = newAccs.map(a => a.id === newName ? {...a, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false} : a);
-      else newAccs.push({id:newName, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false});
+      if (exists) newAccs = newAccs.map(a => a.id === newName ? {...a, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false, excludeFromAvailable:accEditExclude} : a);
+      else newAccs.push({id:newName, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false, excludeFromAvailable:accEditExclude});
     } else {
       // Same name — upsert
       const exists = newAccs.find(a => a.id === showAccModal);
-      if (exists) newAccs = newAccs.map(a => a.id === showAccModal ? {...a, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor} : a);
-      else newAccs.push({id:showAccModal, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false});
+      if (exists) newAccs = newAccs.map(a => a.id === showAccModal ? {...a, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, excludeFromAvailable:accEditExclude} : a);
+      else newAccs.push({id:showAccModal, initialBalance:reqInitial, description:accEditDescription, icon:accEditIcon, color:accEditColor, hidden:false, excludeFromAvailable:accEditExclude});
     }
 
     setStorageAccounts(newAccs);
@@ -2980,7 +2986,7 @@ function App() {
                 </div>
                 <div className="flex flex-col gap-4 pb-20">
                   {customAccounts.map(acc=>(
-                    <button key={acc} onClick={()=>{setShowAccModal(acc);setAccEditName(acc);setAccEditDescription(accountsData[acc]?.description||'');setAccEditBalance((dashboardStats.accountBalances[acc]||0).toFixed(2));setAccEditIcon(accountsData[acc]?.icon||'Wallet');setAccEditColor(accountsData[acc]?.color||'indigo-600');setIsDeleting(false);}}
+                    <button key={acc} onClick={()=>{setShowAccModal(acc);setAccEditName(acc);setAccEditDescription(accountsData[acc]?.description||'');setAccEditBalance((dashboardStats.accountBalances[acc]||0).toFixed(2));setAccEditIcon(accountsData[acc]?.icon||'Wallet');setAccEditColor(accountsData[acc]?.color||'indigo-600');setAccEditExclude(accountsData[acc]?.excludeFromAvailable||false);setIsDeleting(false);}}
                       className="w-full bg-white p-5 rounded-[32px] border border-slate-100 flex justify-between items-center group hover:border-indigo-200 transition-all text-left shadow-sm">
                       <div className="flex items-center gap-4">{(()=>{ const col=ACCOUNT_COLORS.find(c=>c.key===(accountsData[acc]?.color||'indigo-600'))||ACCOUNT_COLORS[0]; return(<div className="w-12 h-12 rounded-2xl flex items-center justify-center transition-colors" style={{backgroundColor:col.bg}}>{React.createElement(getAccountIcon(accountsData[acc]?.icon),{size:24,style:{color:col.icon}})}</div>); })()}<div><div className="font-bold text-slate-800">{acc}</div><div className="text-xs text-slate-400 font-medium">{accountsData[acc]?.description||'Cash / Bank Account'}</div></div></div>
                       <div className="text-right"><div className="text-sm font-bold text-slate-800">LKR {formatCurrency(dashboardStats.accountBalances[acc])}</div><div className="text-[9px] font-bold uppercase tracking-widest text-slate-300 group-hover:text-indigo-400 transition-colors">Adjust</div></div>
@@ -3731,6 +3737,17 @@ function App() {
                   ))}
                 </div>
               </div>
+              {/* Include in Available Balance toggle */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                <div>
+                  <div className="text-sm font-bold text-slate-700">Include in Available Balance</div>
+                  <div className="text-xs text-slate-400 mt-0.5">Turn off for credit cards &amp; excluded accounts</div>
+                </div>
+                <button type="button" onClick={()=>setAccEditExclude(p=>!p)}
+                  className={`relative w-12 h-6 rounded-full transition-all shrink-0 ${!accEditExclude?'bg-green-500':'bg-slate-300'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${!accEditExclude?'translate-x-6':''}`}/>
+                </button>
+              </div>
               <button type="button" onClick={handleAddNewAccount} style={{backgroundColor:"var(--accent)"}} className="w-full p-4 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-transform">Create Account</button>
             </div>
           </div>
@@ -3777,6 +3794,17 @@ function App() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-3 pt-2">
+                  {/* Include in Available Balance toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                    <div>
+                      <div className="text-sm font-bold text-slate-700">Include in Available Balance</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Turn off for credit cards</div>
+                    </div>
+                    <button type="button" onClick={()=>setAccEditExclude(p=>!p)}
+                      className={`relative w-12 h-6 rounded-full transition-all shrink-0 ${!accEditExclude?'bg-green-500':'bg-slate-300'}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${!accEditExclude?'translate-x-6':''}`}/>
+                    </button>
+                  </div>
                   <button type="button" onClick={saveAccountInfo} style={{backgroundColor:"var(--accent)"}} className="w-full p-4 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-transform">Apply Changes</button>
                   <button type="button" onClick={()=>setIsDeleting(true)} className="w-full p-3 text-rose-500 font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-rose-50 rounded-xl transition-colors"><Trash2 size={14}/> Remove Account</button>
                 </div>
